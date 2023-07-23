@@ -37,7 +37,7 @@ class EvalNet(Agent):
                     self.next_q_value_memory[index] = states[trace.states[i+1]]\
                         .observed_actions[trace.actions[i+1]]
                 else:
-                    self.next_q_value_memory[index] = 0 # TODO: check this
+                    self.next_q_value_memory[index] = 0
                 self.mem_cntr += 1
 
         # print("NUM OF POINTS: ", self.mem_cntr)
@@ -234,7 +234,7 @@ def calc_score_4(eval_ensemble: Ensemble, states_actions,
 
 def calc_score_5(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
                  states_actions) -> float:
-    # TODO: debug this
+
     state_batch = T.stack([T.from_numpy(s_a[0]) for s_a in states_actions])
     action_batch = np.array([s_a[1] for s_a in states_actions])
     batch_index = np.arange(len(states_actions), dtype=np.int32)

@@ -9,7 +9,7 @@ based on a given score.
             on a given score function
 
 
-What is needed: TODO: delete when complete
+What is needed:
 1. collect data for the agent. let's say 1000 traces.
 2. train a target ensemble on all the data (Q_K)
 3. draw summaries, i.e., sets of 10(?) traces each. try to make sure each trace
@@ -259,7 +259,6 @@ def main(args):
         # for i, individual in enumerate(population):
         #     individual.calc_fitness(args)
         #     print(f"{datetime.now()} generation: {generation}, individual: {i}")
-        #     # TODO: add some halt condition
         #     # if individual.fitness_score >= TARGET_FITNESS:
         #     #     print(f"Found solution: {individual}")
         #     #     exit()
