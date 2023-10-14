@@ -19,6 +19,7 @@ class DQN(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
         self.loss = nn.MSELoss()
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+        # self.device = T.device('mps:0' if T.backends.mps.is_available() else 'cpu')  # to use apple's mps
         self.to(self.device)
 
     def forward(self, state):

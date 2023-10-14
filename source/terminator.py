@@ -6,6 +6,7 @@ from os.path import abspath, join, exists
 
 import numpy as np
 import gym
+import pygame
 import torch as T
 import highway_env
 from pynput import keyboard
@@ -88,6 +89,7 @@ def simulate_termination(env, subj_agent, opt_agent, args):
         if not PAUSED:
             a = subj_agent.act(curr_obs)
         else:
+            # print("New agent took over")
             a = opt_agent.act(curr_obs)  # np.random.choice([0, 2], 1)[0]
         # a = ACTION
         obs, r, done, trunc, infos = env.step(a)
@@ -126,7 +128,7 @@ if __name__ == '__main__':
     args.agent_path = abspath(
         join('..', 'agents/new_default_agent/DQN_20000_1683742777.213296.pkl'))
     args.opt_agent_path = abspath(
-        join('..', 'agents/new_different_agent/DQN_20000_1683933469.517535.pkl'))
+        join('..', 'agents/new_default_agent/DQN_500_1683526592.007878.pkl'))
     # args.output_dir = abspath(join('..', 'collected_data/results/new_different_agent',
 
     args.gamma = 0.99
@@ -149,4 +151,5 @@ if __name__ == '__main__':
 
     simulate_termination(env, agent, opt_agent, args)
     env.close()
+    pygame.quit()
     print("DONE!!")

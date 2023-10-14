@@ -1,5 +1,5 @@
 from os.path import abspath, join
-
+from datetime import datetime
 import torch as T
 import numpy as np
 import wandb
@@ -115,14 +115,15 @@ class Ensemble:
         # )
 
         for j in range(self.size):
+            # print(self.eval_nets[j].Q_eval.device)
             for i in range(train_rounds):
                 self.eval_nets[j].learn()
 
                 # wandb.log({"net number": j, "train round": i,
                 #            "loss": self.eval_nets[j].train_loss[-1]})
-                # if (i + 1) % 10000 == 0:
-                #     print(f"Net {j + 1}, Train round {i + 1}, avg loss: "
-                #           f"{np.mean(self.eval_nets[j].train_loss[-1000:])}")
+                # if (i + 1) % 100 == 0:
+                #     print(f"{datetime.now()} Net {j + 1}, Train round {i + 1}, avg loss: "
+                #           f"{np.mean(self.eval_nets[j].train_loss[-100:])}")
             if save:  # save a pkl file of nets
                 T.save(self.eval_nets[j].Q_eval.state_dict(),
                        join(abspath(output_dir), f'net_{j}.pkl'))
@@ -160,7 +161,7 @@ def calc_score_1(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
 def calc_score_2(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
                  states_actions) -> float:
 
-    state_batch = T.stack([T.from_numpy(s_a[0]) for s_a in states_actions])
+    state_batch = T.stack([T.from_numpy(s_a[0]) for s_a in states_actions]).to()
     action_batch = np.array([s_a[1] for s_a in states_actions])
     batch_index = np.arange(len(states_actions), dtype=np.int32)
 
@@ -177,6 +178,28 @@ def calc_score_2(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
     eval_variance = T.var(eval_q_values, dim=0)
 
     return T.sum((cand_variance / eval_variance)).item()
+
+
+def calc_score_2_mean(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
+                 states_actions) -> float:
+
+    state_batch = T.stack([T.from_numpy(s_a[0]) for s_a in states_actions]).to()
+    action_batch = np.array([s_a[1] for s_a in states_actions])
+    batch_index = np.arange(len(states_actions), dtype=np.int32)
+
+    cand_nets = candidate_ensemble.get_eval_nets()
+    cand_q_values = T.stack([dqn.forward(state_batch)[batch_index, action_batch]
+                             for dqn in cand_nets])
+
+    cand_variance = T.var(cand_q_values, dim=0)
+
+    eval_nets = eval_ensemble.get_eval_nets()
+    eval_q_values = T.stack([dqn.forward(state_batch)[batch_index, action_batch]
+                             for dqn in eval_nets])
+
+    eval_variance = T.var(eval_q_values, dim=0)
+
+    return T.sum((cand_variance / eval_variance)).item() / len(states_actions)
 
 
 def calc_score_3(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
@@ -252,3 +275,62 @@ def calc_score_5(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
     eval_mean = T.mean(eval_q_values, dim=0)
 
     return T.sum(T.pow(eval_mean - cand_mean, 2)).item()
+
+
+def calc_score_5_mean(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
+                 states_actions) -> float:
+    """like score_5 but taking the mean of the sum"""
+    state_batch = T.stack([T.from_numpy(s_a[0]) for s_a in states_actions])
+    action_batch = np.array([s_a[1] for s_a in states_actions])
+    batch_index = np.arange(len(states_actions), dtype=np.int32)
+
+    cand_nets = candidate_ensemble.get_eval_nets()
+    cand_q_values = T.stack([dqn.forward(state_batch)[batch_index, action_batch]
+                             for dqn in cand_nets])
+
+    cand_mean = T.mean(cand_q_values, dim=0)
+
+    eval_nets = eval_ensemble.get_eval_nets()
+    eval_q_values = T.stack([dqn.forward(state_batch)[batch_index, action_batch]
+                             for dqn in eval_nets])
+
+    eval_mean = T.mean(eval_q_values, dim=0)
+
+    return T.sum(T.pow(eval_mean - cand_mean, 2)).item() / len(states_actions)
+
+
+def calc_q_values(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
+                 states_actions, init_only=True) -> tuple:
+    if init_only:
+        state_batch = T.stack([T.from_numpy(s_a[0]) for s_a in states_actions])
+        action_batch = np.array([s_a[1] for s_a in states_actions])
+        batch_index = np.arange(len(states_actions), dtype=np.int32)
+    else:
+        batch_size = 50
+        indices = np.random.choice(np.arange(len(states_actions), dtype=np.int32),
+                                   batch_size, replace=False)
+        state_batch = T.stack([T.from_numpy(states_actions[i][0]) for i in indices])
+        action_batch = np.array([states_actions[i][1] for i in indices])
+        batch_index = np.arange(batch_size, dtype=np.int32)
+
+
+    cand_nets = candidate_ensemble.get_eval_nets()
+    cand_q_values = T.stack([dqn.forward(state_batch)[batch_index, action_batch]
+                             for dqn in cand_nets])
+
+    cand_mean = T.mean(cand_q_values, dim=0)
+
+    eval_nets = eval_ensemble.get_eval_nets()
+    eval_q_values = T.stack([dqn.forward(state_batch)[batch_index, action_batch]
+                             for dqn in eval_nets])
+
+    eval_mean = T.mean(eval_q_values, dim=0)
+    return cand_mean, eval_mean
+
+    # return T.sum(T.pow(eval_mean - cand_mean, 2)).item()
+
+
+def calc_score_6_validation(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
+                 states_actions) -> float:
+    """sum of rewards"""
+    return 0.0

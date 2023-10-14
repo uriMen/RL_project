@@ -187,7 +187,7 @@ if __name__ == '__main__':
     log_name = f'run_{datetime.now().strftime("%Y-%m-%d_%H:%M:%S")}_' \
                f'{randint(100000, 900000)}'
     args.output_dir = abspath(
-        join(args.data_load_dir, "eval ensemble"))
+        join(args.data_load_dir, "eval ensemble", log_name))
     if not path.exists(args.output_dir):
         makedirs(args.output_dir)
     args.gamma = 0.99

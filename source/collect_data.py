@@ -96,32 +96,46 @@ if __name__ == '__main__':
     parser.add_argument('--eps_end', help='hyper parameter', type=float)
     parser.add_argument('--lr', help='learning rate', type=float)
     parser.add_argument('--batch_size', help='training batch size', type=float)
+    parser.add_argument('--rand_rate',
+                        help='for trained agent only. use for debug.'
+                             'agent will take random actions at this rate',
+                        type=float, default=0)
+    parser.add_argument('--n_rand_actions',
+                        help='use with rand_rate. if a random action is taken'
+                             'agent will act it for this number of steps',
+                        type=int, default=0)
     args = parser.parse_args()
 
     log_name = f'run_{datetime.now().strftime("%Y-%m-%d_%H:%M:%S")}_' \
                f'{randint(100000, 900000)}'
 
+    # default agent
+    # args.agent_path = abspath(
+    #     join('..', 'agents/new_default_agent/DQN_20000_1683742777.213296.pkl'))
+    # different agent
     args.agent_path = abspath(
         join('..', 'agents/new_different_agent/DQN_20000_1683933469.517535.pkl'))
-    args.output_dir = abspath(join('..', 'collected_data/results/new_different_agent',
-                                   'eval_data'))#log_name))
+
+    args.output_dir = abspath(join('..', 'collected_data/results/new_different_agent/eval_data_100_traces'))
     # eval_net
     # args.eval_net_path = abspath(
     #     join('..', 'eval ensemble/net.pkl'))
 
+    # to use none default env uncomment and set value of the line below
+    args.env = "highway2-v0"
+
     args.gamma = 0.99
-    args.epsilon = 0  # means no random actions at all
+    args.epsilon = 0
     args.eps_end = 0.01
     args.lr = 0.001
     args.batch_size = 32
+    args.rand_rate = 0 # 0.05  # create episodes with random actions
+    args.n_rand_actions = 1
 
     if not exists(args.output_dir):
         makedirs(args.output_dir)
 
-    args.n_traces = 50
-
-    # to use none default env uncomment and set value of the line below
-    # args.env = "highway2-v0"
+    args.n_traces = 100
 
     env = make_environment(args.env)
     agent = load_agent(args, is_eval_net=False)

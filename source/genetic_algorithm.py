@@ -36,9 +36,11 @@ from datetime import datetime
 import gym
 import numpy as np
 import pandas as pd
+import torch
 import wandb
 
-from eval_ensemble import Ensemble, calc_score_2, calc_score_5
+from eval_ensemble import Ensemble, calc_score_2, calc_score_5, calc_q_values, \
+    calc_score_5_mean, calc_score_2_mean
 from utils import create_state_action_pairs, pickle_load, save_args
 from policy_eval import load_ensemble_nets
 
@@ -60,12 +62,23 @@ class Individual:
         self.fitness_score = 0
 
     def calc_fitness(self, args):
+        if args.fitness_func == "reward_sum":
+            rewards = [TRAIN_DATA["traces"][gene].reward_sum for gene in self.chromosome]
+            self.fitness_score = -np.sum(rewards)  # negative sign to make lower score better
+        else:
+            train_traces = [TRAIN_DATA["traces"][gene] for gene in self.chromosome]
+            self.ensemble.load_train_data(train_traces, TRAIN_DATA["states"])
+            self.ensemble.train_nets(args.train_rounds, None, False)
+            self.fitness_score = args.fitness_func(
+                self.ensemble, REF_ENSEMBLE, EVAL_STATE_ACTION_PAIRS)
+            # self.fitness_score = np.random.randint(0, 100)
+
+    def validation_q_value(self, args, init_only=True):
         train_traces = [TRAIN_DATA["traces"][gene] for gene in self.chromosome]
         self.ensemble.load_train_data(train_traces, TRAIN_DATA["states"])
         self.ensemble.train_nets(args.train_rounds, None, False)
-        self.fitness_score = args.fitness_func(
-            self.ensemble, REF_ENSEMBLE, EVAL_STATE_ACTION_PAIRS)
-        # self.fitness_score = np.random.randint(0, 100)
+        return calc_q_values(
+            self.ensemble, REF_ENSEMBLE, EVAL_STATE_ACTION_PAIRS, init_only)
 
     def mutate_chromosome(self, args):
         """mutates an individual by randomly changing some of its genes."""
@@ -76,7 +89,7 @@ class Individual:
                     self.chromosome), 1)
 
 
-def generate_initial_population(args):
+def generate_initial_population(args) -> list:
     """This function generates the initial population."""
     min_occurrence = 3
     numbers = np.arange(len(TRAIN_DATA["traces"]))
@@ -100,6 +113,7 @@ def generate_initial_population(args):
 
     # verify each trace is used in at least min_occurrence candidates
     assert hist.min(axis=0)[1] >= min_occurrence
+    print(hist.min(axis=0)[1])
     population = [Individual(candidate, args) for candidate in candidates]
     return population
 
@@ -152,6 +166,7 @@ def save_population(population, idx):
 
     saves indexes of traces contained in each individual and its score.
     """
+    print(f"saving population gen {idx}...")
     data = {
         "candidate": [individual.chromosome for individual in population],
         "score": [individual.fitness_score for individual in population]
@@ -176,7 +191,8 @@ def load_population(args):
     return population, gen_idx
 
 
-def main(args):
+def calc_Q(args, which_states='init'):
+    """validation func. check Q values of ensembles"""
     global TRAIN_DATA
     TRAIN_DATA = {"traces": pickle_load(join(args.train_data_dir,
                                              'Traces.pkl')),
@@ -187,7 +203,39 @@ def main(args):
                  "states": pickle_load(join(args.eval_data_dir, 'States.pkl'))}
     global EVAL_STATE_ACTION_PAIRS
     EVAL_STATE_ACTION_PAIRS = create_state_action_pairs(EVAL_DATA["traces"],
-                                                        EVAL_DATA["states"])
+                                                        EVAL_DATA["states"],
+                                                        which_states)
+    global REF_ENSEMBLE
+    REF_ENSEMBLE = Ensemble(args.ensemble_size, args.gamma, args.batch_size,
+                            args.lr, args.input_dims, args.n_actions)
+    load_ensemble_nets(REF_ENSEMBLE, args.ref_ensemble_dir)
+    population = generate_initial_population(args)
+    gen_idx = 0
+    # for generation in range(gen_idx, 1)#args.n_generations):
+    #     print(f"{datetime.now()} Generation {generation}")
+    mean_q_values = []
+    for i, individual in enumerate(population[:20]):
+        if individual.fitness_score == 0:
+            mean_q_values.append(individual.validation_q_value(args, which_states))
+            print(f"{datetime.now()}  {i}")
+    c = torch.concat([x[0] for x in mean_q_values])
+    e = torch.concat([x[1] for x in mean_q_values])
+    # population = evolve(population)
+    pd.DataFrame({'cand_mean': c.detach().numpy(), 'eval_mean': e.detach().numpy()}).to_csv('ensembles_mean_q_values_2.csv')
+
+def main(args, which_states='init'):
+    global TRAIN_DATA
+    TRAIN_DATA = {"traces": pickle_load(join(args.train_data_dir,
+                                             'Traces.pkl')),
+                  "states": pickle_load(join(args.train_data_dir,
+                                             'States.pkl'))}
+    global EVAL_DATA
+    EVAL_DATA = {"traces": pickle_load(join(args.eval_data_dir, 'Traces.pkl')),
+                 "states": pickle_load(join(args.eval_data_dir, 'States.pkl'))}
+    global EVAL_STATE_ACTION_PAIRS
+    EVAL_STATE_ACTION_PAIRS = create_state_action_pairs(EVAL_DATA["traces"],
+                                                        EVAL_DATA["states"],
+                                                        which_states)
     global REF_ENSEMBLE
     REF_ENSEMBLE = Ensemble(args.ensemble_size, args.gamma, args.batch_size,
                             args.lr, args.input_dims, args.n_actions)
@@ -237,8 +285,8 @@ def main(args):
     for generation in range(gen_idx, args.n_generations):
         print(f"{datetime.now()} Generation {generation}")
 
+        # use threads
         inputs = population
-
         # Create a list of threads
         threads = [threading.Thread(target=thread_worker,
                                     args=(inputs, generation, i))
@@ -254,15 +302,13 @@ def main(args):
 
         population = population_
         population_ = []
+        # end of threads code
 
-        # original. no threads
+        # # original. no threads
         # for i, individual in enumerate(population):
-        #     individual.calc_fitness(args)
+        #     if individual.fitness_score == 0:
+        #         individual.calc_fitness(args)
         #     print(f"{datetime.now()} generation: {generation}, individual: {i}")
-        #     # if individual.fitness_score >= TARGET_FITNESS:
-        #     #     print(f"Found solution: {individual}")
-        #     #     exit()
-
 
         save_population(population, generation)
         population = evolve(population)
@@ -303,18 +349,20 @@ if __name__ == '__main__':
                         type=float, default=0.05)
     parser.add_argument('--fitness_func',
                         help='score function to calculate fitness score')
+    parser.add_argument('--which_state',
+                        help='which state to use when computing scores. '
+                             'options {"init", "rand"}', type=str)
     args = parser.parse_args()
 
     args.output_dir = abspath(
         join('..', "collected_data/results/new_different_agent",
-             "genetic_algorithm_results", "chromosome_size_7", "score_5"))
+             "genetic_algorithm_results", "chromosome_size_7", "score_2_mean", "rand_state_100"))
 
     if not exists(args.output_dir):
         makedirs(args.output_dir)
 
     # to use none default env uncomment and set value of the line below
     args.env = "highway2-v0"
-
     args.gamma = 0.99
     args.lr = 0.001
     args.batch_size = 32
@@ -324,7 +372,8 @@ if __name__ == '__main__':
     args.chromosome_size = 7
     args.n_generations = 6
     args.population_size = 500
-    args.fitness_func = calc_score_5
+    args.fitness_func = calc_score_2_mean  # possible values: {calc_score_2, calc_score_2_mean, calc_score_5, "calc_score_5_mean", "reward_sum"}
+    args.which_state = 'rand'
 
     env = gym.make(args.env)
 
@@ -335,16 +384,17 @@ if __name__ == '__main__':
         join("..",
              "collected_data/results/new_different_agent/train_data"))
     args.eval_data_dir = abspath(
-        join("..", "collected_data/results/new_different_agent/eval_data"))
-    args.ref_ensemble_dir = abspath(
-        join(args.train_data_dir, "eval ensemble"))
+        join("..", "collected_data/results/new_different_agent/eval_data_100_traces"))
+    args.ref_ensemble_dir = abspath(join(
+        "..", "collected_data/results/new_different_agent/train_data/eval ensemble"))
 
     # to load saved population uncomment this
     # args.pop_file = abspath(
     #     join("..",
-    #          "collected_data/results/new_different_agent/genetic_algorithm_results/chromosome_size_7/score_2/gen_5.csv"))
+    #          "collected_data/episodes_with_random_actions/new_default_agent/genetic_algorithm_results/chromosome_size_7/score_5_mean/init_state_500/_gen_0.csv"))
 
     save_args(args)
-    main(args)
+    main(args, which_states=args.which_state)
+    # calc_Q(args, which_states='all')
     # pop = load_population(args)
     print("DONE!!!")

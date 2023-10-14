@@ -39,19 +39,19 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     args.data_load_dir = abspath(
-        join('..', "collected_data/results/new_bad_agent/train_data"))
+        join('..', "collected_data/episodes_with_random_actions/new_default_agent/train_data_rand_0.05_1_actions"))
     args.output_dir = abspath(
-        join('..', "collected_data/results/new_bad_agent",
-             "videos_dir"))
+        join('..', "collected_data/episodes_with_random_actions/new_default_agent",
+             "videos_dir", "1_cons_rand_act"))
     if not exists(args.output_dir):
         makedirs(args.output_dir)
     # trace index to make video
-    args.fps = 6
+    args.fps = 4
     # args.trace_idx = 201
 
-    for k in range(12):
-        args.traces_idx = [np.random.randint(0, 1000) for _ in range(1)]
-        args.video_name = f'rand_vid_{args.traces_idx[0]}'
+    for k in range(1):
+        args.traces_idx =[635]# [np.random.randint(0, 1000) for _ in range(1)]
+        args.video_name = f'rand_vid_{args.traces_idx[0]}_'
         # for id in traces_idx:
         #     args.trace_idx = id
         #
