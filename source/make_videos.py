@@ -15,6 +15,7 @@ def main(args):
     # trace_to_video(traces[args.trace_idx], str(args.trace_idx),
     #                states, args.videos_output_dir, args.fps)
 
+    # if np.sum(traces[args.traces_idx[0]].is_action_random) > 2:
     traces_to_vid = [traces[i] for i in args.traces_idx]
     multi_trace_to_video(traces_to_vid, args.video_name, states,
                          args.output_dir, args.fps)
@@ -39,23 +40,20 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     args.data_load_dir = abspath(
-        join('..', "collected_data/episodes_with_random_actions/new_default_agent/train_data_rand_0.05_1_actions"))
+        join('..', "collected_data/results/new_different_agent/less_trained_agent_data"))
     args.output_dir = abspath(
-        join('..', "collected_data/episodes_with_random_actions/new_default_agent",
-             "videos_dir", "1_cons_rand_act"))
+        join('..', "collected_data/results/new_different_agent/videos_dir_v2",
+             "less_trained_agent_videos"))
     if not exists(args.output_dir):
         makedirs(args.output_dir)
-    # trace index to make video
-    args.fps = 4
-    # args.trace_idx = 201
+    args.fps = 5
 
-    for k in range(1):
-        args.traces_idx =[635]# [np.random.randint(0, 1000) for _ in range(1)]
-        args.video_name = f'rand_vid_{args.traces_idx[0]}_'
+    for k in range(20):
+        args.traces_idx = [np.random.randint(0, 1000) for _ in range(1)]
+        args.video_name = f'rand_vid_{args.traces_idx[0]}'
         # for id in traces_idx:
         #     args.trace_idx = id
         #
         save_args(args)
         main(args)
     print("DONE!!")
-

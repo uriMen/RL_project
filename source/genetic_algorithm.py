@@ -40,7 +40,7 @@ import torch
 import wandb
 
 from eval_ensemble import Ensemble, calc_score_2, calc_score_5, calc_q_values, \
-    calc_score_5_mean, calc_score_2_mean
+    calc_score_5_mean, calc_score_2_mean, calc_score_action_comparison
 from utils import create_state_action_pairs, pickle_load, save_args
 from policy_eval import load_ensemble_nets
 
@@ -60,6 +60,9 @@ class Individual:
                                  args.batch_size, args.lr, args.input_dims,
                                  args.n_actions)
         self.fitness_score = 0
+
+    def __str__(self):
+        return f"traces idx: {self.chromosome}, fitness score: {self.fitness_score}"
 
     def calc_fitness(self, args):
         if args.fitness_func == "reward_sum":
@@ -223,7 +226,8 @@ def calc_Q(args, which_states='init'):
     # population = evolve(population)
     pd.DataFrame({'cand_mean': c.detach().numpy(), 'eval_mean': e.detach().numpy()}).to_csv('ensembles_mean_q_values_2.csv')
 
-def main(args, which_states='init'):
+
+def test_for_specific_individuals(args, candidates):
     global TRAIN_DATA
     TRAIN_DATA = {"traces": pickle_load(join(args.train_data_dir,
                                              'Traces.pkl')),
@@ -235,11 +239,41 @@ def main(args, which_states='init'):
     global EVAL_STATE_ACTION_PAIRS
     EVAL_STATE_ACTION_PAIRS = create_state_action_pairs(EVAL_DATA["traces"],
                                                         EVAL_DATA["states"],
-                                                        which_states)
+                                                        args.which_state)
     global REF_ENSEMBLE
-    REF_ENSEMBLE = Ensemble(args.ensemble_size, args.gamma, args.batch_size,
-                            args.lr, args.input_dims, args.n_actions)
-    load_ensemble_nets(REF_ENSEMBLE, args.ref_ensemble_dir)
+    try:
+        REF_ENSEMBLE = Ensemble(args.ensemble_size, args.gamma, args.batch_size,
+                                args.lr, args.input_dims, args.n_actions)
+        load_ensemble_nets(REF_ENSEMBLE, args.ref_ensemble_dir)
+    except ValueError:
+        REF_ENSEMBLE = None
+
+    for c in candidates:
+        ind = Individual(c, args)
+        ind.calc_fitness(args)
+        print(ind)
+
+
+def main(args):
+    global TRAIN_DATA
+    TRAIN_DATA = {"traces": pickle_load(join(args.train_data_dir,
+                                             'Traces.pkl')),
+                  "states": pickle_load(join(args.train_data_dir,
+                                             'States.pkl'))}
+    global EVAL_DATA
+    EVAL_DATA = {"traces": pickle_load(join(args.eval_data_dir, 'Traces.pkl')),
+                 "states": pickle_load(join(args.eval_data_dir, 'States.pkl'))}
+    global EVAL_STATE_ACTION_PAIRS
+    EVAL_STATE_ACTION_PAIRS = create_state_action_pairs(EVAL_DATA["traces"],
+                                                        EVAL_DATA["states"],
+                                                        args.which_state)
+    global REF_ENSEMBLE
+    try:
+        REF_ENSEMBLE = Ensemble(args.ensemble_size, args.gamma, args.batch_size,
+                                args.lr, args.input_dims, args.n_actions)
+        load_ensemble_nets(REF_ENSEMBLE, args.ref_ensemble_dir)
+    except ValueError:
+        REF_ENSEMBLE = None
 
     # start a new wandb run to track this script
     args_dict = {}
@@ -355,14 +389,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     args.output_dir = abspath(
-        join('..', "collected_data/results/new_different_agent",
-             "genetic_algorithm_results", "chromosome_size_7", "score_2_mean", "rand_state_100"))
+        join('..', "collected_data/results/new_default_agent",
+             "genetic_algorithm_results", "chromosome_size_7", "score_action_comparison"))
 
     if not exists(args.output_dir):
         makedirs(args.output_dir)
 
     # to use none default env uncomment and set value of the line below
-    args.env = "highway2-v0"
+    # args.env = "highway2-v0"
     args.gamma = 0.99
     args.lr = 0.001
     args.batch_size = 32
@@ -370,10 +404,10 @@ if __name__ == '__main__':
     args.train_rounds = 5000
     args.n_candidates = 1000
     args.chromosome_size = 7
-    args.n_generations = 6
+    args.n_generations = 1
     args.population_size = 500
-    args.fitness_func = calc_score_2_mean  # possible values: {calc_score_2, calc_score_2_mean, calc_score_5, "calc_score_5_mean", "reward_sum"}
-    args.which_state = 'rand'
+    args.fitness_func = calc_score_action_comparison  # possible values: {calc_score_2, calc_score_2_mean, calc_score_5, calc_score_5_mean, reward_sum, calc_score_action_comparison}
+    args.which_state = 'all'  # possible values: {"init", "rand", "all"}
 
     env = gym.make(args.env)
 
@@ -382,11 +416,11 @@ if __name__ == '__main__':
 
     args.train_data_dir = abspath(
         join("..",
-             "collected_data/results/new_different_agent/train_data"))
+             "collected_data/results/new_default_agent/train_data"))
     args.eval_data_dir = abspath(
-        join("..", "collected_data/results/new_different_agent/eval_data_100_traces"))
+        join("..", "collected_data/results/new_default_agent/eval_data_100_traces"))
     args.ref_ensemble_dir = abspath(join(
-        "..", "collected_data/results/new_different_agent/train_data/eval ensemble"))
+        "..", "collected_data/results/new_default_agent/train_data/eval ensemble"))
 
     # to load saved population uncomment this
     # args.pop_file = abspath(
@@ -394,7 +428,11 @@ if __name__ == '__main__':
     #          "collected_data/episodes_with_random_actions/new_default_agent/genetic_algorithm_results/chromosome_size_7/score_5_mean/init_state_500/_gen_0.csv"))
 
     save_args(args)
-    main(args, which_states=args.which_state)
+    # main(args)
+    candidates = [[830, 175, 221, 30, 592, 925, 442], [576, 884, 737, 455, 807, 546, 809], [385, 140, 713, 634, 629, 503, 376]]
+    for _ in range(5):
+        test_for_specific_individuals(args, candidates)
+        print("-----")
     # calc_Q(args, which_states='all')
     # pop = load_population(args)
     print("DONE!!!")

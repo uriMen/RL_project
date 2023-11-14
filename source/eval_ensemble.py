@@ -299,6 +299,30 @@ def calc_score_5_mean(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
     return T.sum(T.pow(eval_mean - cand_mean, 2)).item() / len(states_actions)
 
 
+def calc_score_action_comparison(candidate_ensemble=None, eval_ensemble=None,
+                                 states_actions=None) -> float:
+    """count number of disagreements between action given by
+    the ensemble and the actual action taken.
+    """
+    state_batch = T.stack([T.from_numpy(s_a[0]) for s_a in states_actions])
+    action_batch = np.array([s_a[1] for s_a in states_actions])
+    batch_index = np.arange(len(states_actions), dtype=np.int32)
+
+    cand_nets = candidate_ensemble.get_eval_nets()
+    cand_q_values = T.stack([dqn.forward(state_batch) for dqn in cand_nets])
+    cand_actions = T.argmax(T.mean(cand_q_values, dim=0), dim=1)
+    score = np.sum(action_batch != cand_actions.numpy()) / len(states_actions)
+
+    # verify eval ensemble score
+    # eval_nets = eval_ensemble.get_eval_nets()
+    # eval_q_values = T.stack([dqn.forward(state_batch) for dqn in eval_nets])
+    # eval_actions = T.argmax(T.mean(eval_q_values, dim=0), dim=1)
+    # eval_score = np.sum(action_batch != eval_actions.numpy()) / len(states_actions)
+    #
+    # print(score, eval_score)
+    return score
+
+
 def calc_q_values(candidate_ensemble: Ensemble, eval_ensemble: Ensemble,
                  states_actions, init_only=True) -> tuple:
     if init_only:
