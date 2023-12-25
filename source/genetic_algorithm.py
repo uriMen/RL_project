@@ -41,6 +41,7 @@ import wandb
 
 from eval_ensemble import Ensemble, calc_score_2, calc_score_5, calc_q_values, \
     calc_score_5_mean, calc_score_2_mean, calc_score_action_comparison
+from supervised_model import Model
 from utils import create_state_action_pairs, pickle_load, save_args
 from policy_eval import load_ensemble_nets
 
@@ -56,9 +57,12 @@ class Individual:
 
     def __init__(self, traces_idx: list, args):
         self.chromosome = traces_idx
-        self.ensemble = Ensemble(args.ensemble_size, args.gamma,
-                                 args.batch_size, args.lr, args.input_dims,
-                                 args.n_actions)
+        if args.fitness_func == "supervised":
+            self.supervised_model = Model(args.input_dims)
+        else:
+            self.ensemble = Ensemble(args.ensemble_size, args.gamma,
+                                     args.batch_size, args.lr, args.input_dims,
+                                     args.n_actions)
         self.fitness_score = 0
 
     def __str__(self):
@@ -68,6 +72,16 @@ class Individual:
         if args.fitness_func == "reward_sum":
             rewards = [TRAIN_DATA["traces"][gene].reward_sum for gene in self.chromosome]
             self.fitness_score = -np.sum(rewards)  # negative sign to make lower score better
+
+        elif args.fitness_func == "supervised":
+            assert args.which_state == "all"
+            self.supervised_model.store_train_data(
+                [TRAIN_DATA["traces"][gene] for gene in self.chromosome])
+            self.supervised_model.train()
+            eval_states, eval_actions = list(zip(*EVAL_STATE_ACTION_PAIRS))
+            self.fitness_score = - self.supervised_model.calc_score(
+                eval_states, eval_actions) # negative sign to make lower score better
+
         else:
             train_traces = [TRAIN_DATA["traces"][gene] for gene in self.chromosome]
             self.ensemble.load_train_data(train_traces, TRAIN_DATA["states"])
@@ -295,6 +309,7 @@ def main(args):
         # Do some work on the input...
         if individual.fitness_score == 0:
             individual.calc_fitness(args)
+            # print(individual)
         population_.append(individual)
 
 
@@ -390,7 +405,7 @@ if __name__ == '__main__':
 
     args.output_dir = abspath(
         join('..', "collected_data/results/new_default_agent",
-             "genetic_algorithm_results", "chromosome_size_7", "score_action_comparison"))
+             "genetic_algorithm_results", "chromosome_size_9", "supervised_model"))
 
     if not exists(args.output_dir):
         makedirs(args.output_dir)
@@ -403,10 +418,10 @@ if __name__ == '__main__':
     args.ensemble_size = 5
     args.train_rounds = 5000
     args.n_candidates = 1000
-    args.chromosome_size = 7
-    args.n_generations = 1
+    args.chromosome_size = 9 #7
+    args.n_generations = 20
     args.population_size = 500
-    args.fitness_func = calc_score_action_comparison  # possible values: {calc_score_2, calc_score_2_mean, calc_score_5, calc_score_5_mean, reward_sum, calc_score_action_comparison}
+    args.fitness_func = "supervised"  # possible values: {calc_score_2, calc_score_2_mean, calc_score_5, calc_score_5_mean, "reward_sum", calc_score_action_comparison, "supervised"}
     args.which_state = 'all'  # possible values: {"init", "rand", "all"}
 
     env = gym.make(args.env)
@@ -423,16 +438,12 @@ if __name__ == '__main__':
         "..", "collected_data/results/new_default_agent/train_data/eval ensemble"))
 
     # to load saved population uncomment this
-    # args.pop_file = abspath(
-    #     join("..",
-    #          "collected_data/episodes_with_random_actions/new_default_agent/genetic_algorithm_results/chromosome_size_7/score_5_mean/init_state_500/_gen_0.csv"))
+    args.pop_file = abspath(
+        join("..",
+             "collected_data/results/new_default_agent/genetic_algorithm_results/chromosome_size_9/supervised_model/gen_9.csv"))
 
     save_args(args)
-    # main(args)
-    candidates = [[830, 175, 221, 30, 592, 925, 442], [576, 884, 737, 455, 807, 546, 809], [385, 140, 713, 634, 629, 503, 376]]
-    for _ in range(5):
-        test_for_specific_individuals(args, candidates)
-        print("-----")
+    main(args)
     # calc_Q(args, which_states='all')
     # pop = load_population(args)
     print("DONE!!!")
