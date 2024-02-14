@@ -40,20 +40,23 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     args.data_load_dir = abspath(
-        join('..', "collected_data/results/new_different_agent/less_trained_agent_data"))
+        join('..', "collected_data/episodes_with_random_actions/new_default_agent/train_data_rand_0.05_2_actions"))
     args.output_dir = abspath(
-        join('..', "collected_data/results/new_different_agent/videos_dir_v2",
-             "less_trained_agent_videos"))
+        join('..', "collected_data/results/videos_v4",
+             "rand_actions"))
     if not exists(args.output_dir):
         makedirs(args.output_dir)
     args.fps = 5
 
-    for k in range(20):
-        args.traces_idx = [np.random.randint(0, 1000) for _ in range(1)]
-        args.video_name = f'rand_vid_{args.traces_idx[0]}'
-        # for id in traces_idx:
-        #     args.trace_idx = id
-        #
-        save_args(args)
-        main(args)
+    traces = pickle_load(join(args.data_load_dir, 'Traces.pkl'))
+    states = pickle_load(join(args.data_load_dir, 'States.pkl'))
+
+    # for k in range(20):
+    args.traces_idx = [398, 503, 896, 298, 422, 924, 428, 151, 239, 652, 755, 150, 943, 416, 146]
+    for i in args.traces_idx:
+        args.video_name = f'rand_actions_{i}'
+        multi_trace_to_video([traces[i]], args.video_name, states,
+                             args.output_dir, args.fps)
+    # main(args)
+    save_args(args)
     print("DONE!!")

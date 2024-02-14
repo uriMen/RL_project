@@ -114,9 +114,10 @@ if __name__ == '__main__':
     #     join('..', 'agents/new_default_agent/DQN_20000_1683742777.213296.pkl'))
     # different agent
     args.agent_path = abspath(
-        join('..', 'agents/new_different_agent/DQN_20000_1683933469.517535.pkl'))
+        join('..', 'agents/new_different_agent/DQN_10000_1683871372.697376.pkl'))
+             # 'agents/new_different_agent/DQN_20000_1683933469.517535.pkl'))
 
-    args.output_dir = abspath(join('..', 'collected_data/results/new_different_agent/eval_data_100_traces'))
+    args.output_dir = abspath(join('..', 'collected_data/results/new_different_agent', 'less_trained_agent_data___test'))
     # eval_net
     # args.eval_net_path = abspath(
     #     join('..', 'eval ensemble/net.pkl'))
@@ -129,13 +130,13 @@ if __name__ == '__main__':
     args.eps_end = 0.01
     args.lr = 0.001
     args.batch_size = 32
-    args.rand_rate = 0 # 0.05  # create episodes with random actions
-    args.n_rand_actions = 1
+    args.rand_rate = 0  # 0.05  # create episodes with random actions
+    args.n_rand_actions = 2
 
     if not exists(args.output_dir):
         makedirs(args.output_dir)
 
-    args.n_traces = 100
+    args.n_traces = 300
 
     env = make_environment(args.env)
     agent = load_agent(args, is_eval_net=False)

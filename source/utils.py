@@ -8,6 +8,7 @@ import cv2
 import matplotlib.pyplot as plt
 import imageio
 import numpy as np
+import torch as T
 
 
 class Trace(object):
@@ -36,6 +37,17 @@ class Trace(object):
         self.states.append(state_id)
         self.length += 1
         self.is_action_random.append(is_action_random)
+
+    def likelihood_from_q_values(self, states) -> float:
+        """calculate mean log-likelihood of trace"""
+        q_values_vectors = [states[s_id].observed_actions for s_id in
+                            self.states]
+        stacked_tensor = T.stack(q_values_vectors)
+        prob = T.nn.Softmax(dim=1)(stacked_tensor)
+        log_likelihood = T.log(
+            prob[range(self.length),T.argmax(stacked_tensor, dim=1)])
+        mean_ll = T.mean(log_likelihood)
+        return mean_ll.item()
 
 
 class State(object):
@@ -76,8 +88,8 @@ def clean_dir(path, file_type=''):
         os.remove(f)
 
 
-def save_args(args):
-    with open(abspath(join(args.output_dir, 'commandline_args.txt')), 'w') as f:
+def save_args(args, file_name="commandline_args", description=""):
+    with open(abspath(join(args.output_dir, f'{file_name}.txt')), 'w') as f:
         for arg_name, arg_value in vars(args).items():
             f.write(f"{arg_name}: {arg_value}\n")
 
@@ -88,11 +100,13 @@ def create_video(frames_dir, output_dir, n_hls, size, fps):
         hl_str = str(hl) if hl > 9 else "0" + str(hl)
         img_array = []
         file_list = sorted(
-            [x for x in glob.glob(frames_dir + "/*.png") if x.split('/')[-1].startswith(hl_str)])
+            [x for x in glob.glob(frames_dir + "/*.png") if
+             x.split('/')[-1].startswith(hl_str)])
         for f in file_list:
             img = cv2.imread(f)
             img_array.append(img)
-        out = cv2.VideoWriter(join(output_dir, f'HL_{hl}.mp4'), cv2.VideoWriter_fourcc(*'mp4v'),
+        out = cv2.VideoWriter(join(output_dir, f'HL_{hl}.mp4'),
+                              cv2.VideoWriter_fourcc(*'mp4v'),
                               fps, size)
         for i in range(len(img_array)):
             out.write(img_array[i])
@@ -145,7 +159,8 @@ def multi_trace_to_video(traces: list, name: str, states: dict,
             for i in range(fade_frames):
                 frame = cv2.imread(file_list[-1])
                 alpha = 1.0 - (i + 1) / fade_frames
-                fade = np.zeros(frame.shape, dtype=np.uint8)  # np.ones(frame.shape, dtype=np.uint8) * 255
+                fade = np.zeros(frame.shape,
+                                dtype=np.uint8)  # np.ones(frame.shape, dtype=np.uint8) * 255
                 frame = cv2.addWeighted(frame, alpha, fade, 1 - alpha, 0)
                 img_array.append(frame)
 
@@ -194,8 +209,8 @@ def create_state_action_pairs(traces, states, which_states='init') -> list:
             a = trace.actions[j]
             states_actions.append((s, a))
         else:
-            raise Exception("which_state param should be one of {'init', 'all', 'rand'}")
-
+            raise Exception(
+                "which_state param should be one of {'init', 'all', 'rand'}")
 
     return states_actions
 

@@ -39,15 +39,15 @@ def get_single_trace(env, agent, trace_idx, agent_traces, states_dict, args):
 
         """take an action and update environment"""
         a = agent.act(curr_obs)
-        obs, r, done, trunc, infos = env.step(a)
+        new_obs, r, done, trunc, infos = env.step(a)
         # if done then r = r + max(state_q_values)
-        obs = np.array(obs).flatten()
+        new_obs = np.array(new_obs).flatten()
 
         """Add step and state to trace"""
-        trace.update(curr_obs, obs, r, done, infos, a, state_id)
+        trace.update(curr_obs, new_obs, r, done, infos, a, state_id)
 
         """Update observation to the following one"""
-        curr_obs = obs
+        curr_obs = new_obs
 
     """Generate Final State and add to States.
     This state the one seen once the episode terminates.

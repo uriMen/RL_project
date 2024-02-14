@@ -2,8 +2,10 @@
 train a supervised model whose features are states and output is action.
 """
 import argparse
+import datetime
 from os.path import join, abspath
 
+import gym
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -57,6 +59,31 @@ class Model:
             self.model.fit(self.input_memory, y_train)
             # print(self.model.feature_importances_)
 
+    def act(self, state):
+        """given a state, return an action"""
+        action = self.model.predict((state,))
+        if self.encoded_actions:
+            action = self.actions_encoder.inverse_transform(action)
+        return action[0]
+
+    def get_episode_states_actions(self, env):
+        """execute an episode with the model as agent
+        and return its states and taken actions"""
+        states = []
+        actions = []
+        done = False
+        curr_obs, info = env.reset()
+        while not done:
+            # env.render(mode='rgb_array')
+            curr_obs = np.array(curr_obs).flatten()
+            action = self.act(curr_obs)
+            states.append(curr_obs)
+            actions.append(action)
+            new_obs, r, done, trunc, infos = env.step(action)
+            curr_obs = new_obs
+
+        return states, actions
+
     def hyper_param_tune(self, params):
         pass
 
@@ -106,33 +133,48 @@ if __name__ == '__main__':
     traces = pickle_load(join(args.train_data_dir, 'Traces.pkl'))
     states = pickle_load(join(args.train_data_dir, 'States.pkl'))
 
-    eval_traces = pickle_load(join(args.eval_data_dir, 'Traces.pkl'))
-    eval_states = pickle_load(join(args.eval_data_dir, 'States.pkl'))
+    # eval_traces = pickle_load(join(args.eval_data_dir, 'Traces.pkl'))
+    # eval_states = pickle_load(join(args.eval_data_dir, 'States.pkl'))
 
-    eval_states, eval_actions = list(
-        zip(*create_state_action_pairs(eval_traces, eval_states, 'all')))
+    # eval_states, eval_actions = list(
+    #     zip(*create_state_action_pairs(eval_traces, eval_states, 'all')))
 
+    summaries = {"5_best": ([719, 628, 958, 131, 212],[413, 483, 553]),
+                 "5_med": ([955, 798, 513, 860, 280], [227, 376, 835]),
+                 "5_bad": ([902, 776, 28, 828, 191], [954, 992, 120]),
+                 "3_best": ([759, 214, 426], [413, 483, 553]),
+                 "3_med": ([743, 772, 617], [227, 376, 835]),
+                 "3_bad": ([569, 704, 345], [954, 992, 120])
+                 }
+    summary_episodes_scores = dict()
+    summary_questions_scores = []
+    for summary_type, traces_idx in summaries.items():
 
-    """sanity checks asked by assaf"""
-    # 1. not sure, verify with assaf
+        scores = []
+        model = Model([25])
+        model.store_train_data([traces[i] for i in traces_idx[0]])
+        model.train()
+        env = gym.make('highway-v0')
+        for i in range(1000):
+            states, actions = model.get_episode_states_actions(env)
+            scores.append(model.calc_score(states, actions))
+            print(summary_type, i)
+        summary_episodes_scores[summary_type] = scores
 
-    # 2.
-    # summary_1 = [482, 990, 546, 779, 558, 406, 360]
-    # summary_2 = [654, 654, 654, 654, 654, 654, 654]
-    #
-    # summaries = [[482, 990, 546, 779, 558, 406, 360], [654, 654, 654, 654, 654, 654, 654]]
-    #
-    # scores = {0: [], 1: []}
-    # for j, s in enumerate(summaries):
-    #     model = Model([25])
-    #     model.store_train_data([traces[i] for i in s])
-    #     model.train()
-    #     for t in eval_traces:
-    #         scores[j].append(model.calc_score(t.obs, t.actions))
-    # # print(s, "score: ", score)
-    # pd.DataFrame(data=scores).to_csv("sanity_check_2.csv")
+        for idx in traces_idx[1]:
+            eval_states = traces[idx].obs
+            eval_actions = traces[idx].actions
+            score = model.calc_score(eval_states, eval_actions)
+            summary_questions_scores.append({"summary_type": summary_type,
+                                             "episode_id": idx,
+                                             "score": score})
+        print(f'{summary_type} done {datetime.datetime.now()}')
 
+    df = pd.DataFrame.from_dict(summary_episodes_scores)#, orient='index') #.to_csv('coputational_validation.csv')
+    df_ = pd.DataFrame.from_dict(summary_questions_scores)
 
-    print(np.unique(eval_actions, return_counts=True))
+    df.to_csv('summary_based_episodes.csv')
+    df_.to_csv('scores_of_questions.csv')
+    # print(df, df_)
 
 
