@@ -19,11 +19,12 @@ from source.utils import save_args
 
 def main(args):
     env = gym.make(args.env)
+    repeat_train = 100
     agent = Agent(gamma=args.gamma, epsilon=args.epsilon,
                   batch_size=args.batch_size, n_actions=env.action_space.n,
-                  eps_end=args.eps_end,
+                  eps_end=args.eps_end, max_mem_size=10000,
                   input_dims=[math.prod(env.observation_space.shape)],
-                  lr=args.lr)
+                  lr=args.lr, repeat_train=repeat_train)
 
     # if resuming training of trained agent. change the name of the agent
     # change epsilon to 0.01 as well
@@ -37,39 +38,51 @@ def main(args):
     scores, eps_history = [], []
     # to collect data only on right lanes use these thresholds
     right_lane_reward_thresholds = {1: 0.7, 2: 0.4, 3: 0, 4: -1}
+    args_dict = {}
+    for arg_name, arg_value in vars(args).items():
+        args_dict[arg_name] = arg_value
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="train_agent_process",
+        # track hyper parameters and run metadata
+        config=args_dict
+    )
 
+    total_num_steps = 0
     for i in range(args.n_episodes):
         score = 0
         done = False
         observation, info = env.reset()
-        save_next_state = True if info['rewards']['right_lane_reward'] > right_lane_reward_thresholds[args.num_of_lanes_in_data] \
-            else False
+        save_next_state = True  # info['rewards']['right_lane_reward'] > right_lane_reward_thresholds[args.num_of_lanes_in_data]
+        episode_length = 0
         while not done:
             observation = np.array(observation).flatten()
             action = agent.act(observation)
             new_observation, reward, done, trunc, info = env.step(action)
+            total_num_steps += 1
+            episode_length += 1
             # env.render()
             score += reward
             new_observation = np.array(new_observation).flatten()
-            if not args.is_right_lane_training:
-                agent.store_transition(observation, action, reward,
-                                       new_observation, done)
-            else:
-                # save_next_state = info['rewards']['right_lane_reward'] > \
-                #                   right_lane_reward_thresholds[
-                #                       args.num_of_lanes_in_data]
-                # if not save_next_state:
-                #     done = True
-                if save_next_state:
-                    agent.store_transition(observation, action, reward,
-                                           new_observation, done)
-                    save_next_state = False
-                save_next_state = info['rewards']['right_lane_reward'] > \
-                                  right_lane_reward_thresholds[
-                                      args.num_of_lanes_in_data]
-                # if not save_next_state:
-                #     done = True
-            # agent.learn()  # original code, e.g., for new_default_agent
+            agent.store_transition(observation, action, reward, new_observation, done)
+            #
+            # if not args.is_right_lane_training:
+            #     agent.store_transition(observation, action, reward,
+            #                            new_observation, done)
+            # else:
+            #     # save_next_state = info['rewards']['right_lane_reward'] > \
+            #     #                   right_lane_reward_thresholds[
+            #     #                       args.num_of_lanes_in_data]
+            #     # if not save_next_state:
+            #     #     done = True
+            #     #if save_next_state:
+            #     agent.store_transition(observation, action, reward, new_observation, done)
+            #         # save_next_state = False
+            #     # save_next_state = info['rewards']['right_lane_reward'] > right_lane_reward_thresholds[args.num_of_lanes_in_data]
+            #
+            #     # if not save_next_state:
+            #     #     done = True
+            # # agent.learn()  # original code, e.g., for new_default_agent
             observation = new_observation[:]
         agent.learn()  # moved from 2 line above
         scores.append(score)
@@ -77,18 +90,12 @@ def main(args):
 
         avg_score = np.mean(scores[-100:])  # moving average of last 100 games
 
-        args_dict = {}
-        for arg_name, arg_value in vars(args).items():
-            args_dict[arg_name] = arg_value
-        wandb.init(
-            # set the wandb project where this run will be logged
-            project="train_agent_process",
-            # track hyper parameters and run metadata
-            config=args_dict
-        )
-
         wandb.log({"train_round": i,
-                   "avg_score": avg_score})
+                   "avg_score": score,
+                   "episode_length": episode_length,
+                   "total_num_steps": total_num_steps,
+                   "losses": np.mean(agent.losses[-repeat_train:]),
+                   "Q": np.mean(agent.qs[-repeat_train:])})
 
         if args.verbose:
             if (i+1) % 10 == 0:
@@ -154,7 +161,7 @@ if __name__ == '__main__':
     args.save_every = 500
     args.is_right_lane_training = True
     args.num_of_lanes_in_data = 3
-    args.output_dir = abspath(join("..", "agents/right_lanes_agent__test_9"))
+    args.output_dir = abspath("agents/right_lanes_agent__test_9")
     args.res_file_name = "results.csv"
     args.run_description = "train on data of 3 lanes only"
     if not exists(args.output_dir):
