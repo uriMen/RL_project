@@ -49,7 +49,9 @@ def main(args):
     )
 
     total_num_steps = 0
-    for i in range(args.n_episodes):
+    lane_resets = 0
+    action_hist = [0] * 5
+    for ep_idx in range(args.n_episodes):
         score = 0
         done = False
         observation, info = env.reset()
@@ -58,12 +60,16 @@ def main(args):
         while not done:
             observation = np.array(observation).flatten()
             action = agent.act(observation)
+            action_hist[action] += 1
             new_observation, reward, done, trunc, info = env.step(action)
             total_num_steps += 1
             episode_length += 1
             # env.render()
             score += reward
             new_observation = np.array(new_observation).flatten()
+            if info['rewards']['right_lane_reward'] > right_lane_reward_thresholds[args.num_of_lanes_in_data]:
+                done = True
+                lane_resets += 1
             agent.store_transition(observation, action, reward, new_observation, done)
             #
             # if not args.is_right_lane_training:
@@ -90,24 +96,26 @@ def main(args):
 
         avg_score = np.mean(scores[-100:])  # moving average of last 100 games
 
-        wandb.log({"train_round": i,
+        wandb.log({"train_round": ep_idx,
                    "avg_score": score,
                    "episode_length": episode_length,
                    "total_num_steps": total_num_steps,
                    "losses": np.mean(agent.losses[-repeat_train:]),
-                   "Q": np.mean(agent.qs[-repeat_train:])})
+                   "Q": np.mean(agent.qs[-repeat_train:]),
+                   "lane_resets": lane_resets / (ep_idx+1)})
+        wandb.log({"action_" + str(a): action_hist[a]/(ep_idx+1) for a in range(5)})
 
         if args.verbose:
-            if (i+1) % 10 == 0:
-                print(datetime.now().time(), 'episode', i+1, 'score %.2f' % score,
+            if (ep_idx+1) % 10 == 0:
+                print(datetime.now().time(), 'episode', ep_idx+1, 'score %.2f' % score,
                       'average score %.2f' % avg_score,
                       'epsilon %.2f' % agent.epsilon)
 
         # save agent's DQN every 100 episodes
-        if (i+1) % args.save_every == 0:
+        if (ep_idx+1) % args.save_every == 0:
             T.save(agent.Q_target.state_dict(),
                    abspath(join(args.output_dir,
-                                f'DQN_{i+1}_{datetime.timestamp(datetime.now())}.pkl')))
+                                f'DQN_{ep_idx+1}_{datetime.timestamp(datetime.now())}.pkl')))
             # save results
             results = pd.DataFrame(
                 data={'scores': scores, "epsilon": eps_history})
