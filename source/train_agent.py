@@ -55,6 +55,8 @@ def main(args):
         score = 0
         done = False
         observation, info = env.reset()
+        while info['rewards']['right_lane_reward'] > right_lane_reward_thresholds[args.num_of_lanes_in_data]:
+            observation, info = env.reset()
         save_next_state = True  # info['rewards']['right_lane_reward'] > right_lane_reward_thresholds[args.num_of_lanes_in_data]
         episode_length = 0
         while not done:
@@ -103,7 +105,7 @@ def main(args):
                    "losses": np.mean(agent.losses[-repeat_train:]),
                    "Q": np.mean(agent.qs[-repeat_train:]),
                    "lane_resets": lane_resets / (ep_idx+1)})
-        wandb.log({"action_" + str(a): action_hist[a]/(ep_idx+1) for a in range(5)})
+        wandb.log({"action_" + str(a): action_hist[a]/total_num_steps for a in range(5)})
 
         if args.verbose:
             if (ep_idx+1) % 10 == 0:
@@ -165,7 +167,7 @@ if __name__ == '__main__':
     args.eps_end = 0.01
     args.lr = 0.001
     args.batch_size = 32
-    args.n_episodes = 20000
+    args.n_episodes = 40000 #20000
     args.save_every = 500
     args.is_right_lane_training = True
     args.num_of_lanes_in_data = 3

@@ -111,6 +111,7 @@ class Agent:
             self.losses.append(float(loss))
             self.qs.append(float(q_eval.mean()))
             loss.backward()
+            T.nn.utils.clip_grad_norm_(self.Q_eval.parameters(), 1.0)
             self.Q_eval.optimizer.step()
         self.epsilon = max(self.epsilon - self.eps_dec, self.eps_min)
 
