@@ -31,7 +31,7 @@ class DQN(nn.Module):
 
 class Agent:
     def __init__(self, gamma, epsilon, lr, input_dims, batch_size, n_actions,
-                 max_mem_size=100000, eps_end=0.01, eps_dec=5e-4):
+                 max_mem_size=100000, eps_end=0.01, eps_dec=5e-4, repeat_train=100):
         self.gamma = gamma  # discount factor
         self.epsilon = epsilon
         self.lr = lr
@@ -53,6 +53,10 @@ class Agent:
         self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
+        self.repeat_train = repeat_train
+        self.losses = [0.0] * repeat_train
+        self.qs = [0.0] * repeat_train
+
 
     def store_transition(self, state, action, reward, new_state, done):
         index = self.mem_cntr % self.mem_size
@@ -78,34 +82,38 @@ class Agent:
         return self.Q_eval.forward(state)
 
     def learn(self):
-        if self.mem_cntr < self.batch_size:
+        # if self.mem_cntr < self.batch_size:
+        if self.mem_cntr < self.mem_size:
             return
-        self.Q_eval.optimizer.zero_grad()
-        max_mem = min(self.mem_cntr, self.mem_size)
-        batch = np.random.choice(max_mem, self.batch_size, replace=False)
-        batch_index = np.arange(self.batch_size, dtype=np.int32)
-        state_batch = T.tensor(self.state_memory[batch]).to(self.Q_eval.device)
-        new_state_batch = T.tensor(self.new_state_memory[batch]).\
-            to(self.Q_eval.device)
-        reward_batch = T.tensor(self.reward_memory[batch]).\
-            to(self.Q_eval.device)
-        terminal_batch = T.tensor(self.terminal_memory[batch]).\
-            to(self.Q_eval.device)
-        action_batch = self.action_memory[batch]
+        for i in range(self.repeat_train):
+            self.Q_eval.optimizer.zero_grad()
+            max_mem = min(self.mem_cntr, self.mem_size)
+            batch = np.random.choice(max_mem, self.batch_size, replace=False)
+            batch_index = np.arange(self.batch_size, dtype=np.int32)
+            state_batch = T.tensor(self.state_memory[batch]).to(self.Q_eval.device)
+            new_state_batch = T.tensor(self.new_state_memory[batch]).\
+                to(self.Q_eval.device)
+            reward_batch = T.tensor(self.reward_memory[batch]).\
+                to(self.Q_eval.device)
+            terminal_batch = T.tensor(self.terminal_memory[batch]).\
+                to(self.Q_eval.device)
+            action_batch = self.action_memory[batch]
 
-        # Double q-learning algorithm
-        q_eval = self.Q_eval.forward(state_batch)[batch_index, action_batch]
-        q_next = self.Q_eval.forward(new_state_batch)
-        q_next[terminal_batch] = 0.0
-        arg_max_ = T.argmax(q_next, dim=1)
-        q_values_next = self.Q_target.forward(new_state_batch).gather(1, arg_max_.view(-1, 1)).view(-1)
-        q_target = reward_batch + self.gamma * q_values_next
+            # Double q-learning algorithm
+            q_eval = self.Q_eval.forward(state_batch)[batch_index, action_batch]
+            q_next = self.Q_eval.forward(new_state_batch)
+            q_next[terminal_batch] = 0.0
+            arg_max_ = T.argmax(q_next, dim=1)
+            q_values_next = self.Q_target.forward(new_state_batch).gather(1, arg_max_.view(-1, 1)).view(-1)
+            q_target = reward_batch + self.gamma * q_values_next
 
-        loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
-        loss.backward()
-        self.Q_eval.optimizer.step()
-        self.epsilon = self.epsilon - self.eps_dec \
-            if self.epsilon > self.eps_min else self.eps_min
+            loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
+            self.losses.append(float(loss))
+            self.qs.append(float(q_eval.mean()))
+            loss.backward()
+            T.nn.utils.clip_grad_norm_(self.Q_eval.parameters(), 1.0)
+            self.Q_eval.optimizer.step()
+        self.epsilon = max(self.epsilon - self.eps_dec, self.eps_min)
 
         # copy eval net to target net
         if self.mem_cntr % self.update_target_every == 0:
